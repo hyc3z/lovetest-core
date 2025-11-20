@@ -5,9 +5,9 @@ namespace ActivationCodeApi;
 
 public static class SeedData
 {
-    public static void Initialize(AppDbContext context)
+    public static void Initialize(LiteDbContext context)
     {
-        if (context.ActivationCodes.Any())
+        if (context.ActivationCodes.Count() > 0)
         {
             return; // Database already seeded
         }
@@ -21,7 +21,6 @@ public static class SeedData
             new ActivationCode { Code = "DEMO-CODE-456", IsUsed = false }
         };
 
-        context.ActivationCodes.AddRange(codes);
-        context.SaveChanges();
+        context.ActivationCodes.InsertBulk(codes);
     }
 }

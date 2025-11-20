@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ActivationCodeApi.Data;
 using ActivationCodeApi.DTOs;
 
@@ -9,10 +8,10 @@ namespace ActivationCodeApi.Controllers;
 [Route("api/[controller]")]
 public class ActivationController : ControllerBase
 {
-    private readonly AppDbContext _context;
+    private readonly LiteDbContext _context;
     private readonly ILogger<ActivationController> _logger;
 
-    public ActivationController(AppDbContext context, ILogger<ActivationController> logger)
+    public ActivationController(LiteDbContext context, ILogger<ActivationController> logger)
     {
         _context = context;
         _logger = logger;
@@ -30,8 +29,7 @@ public class ActivationController : ControllerBase
             });
         }
 
-        var activationCode = await _context.ActivationCodes
-            .FirstOrDefaultAsync(c => c.Code == request.Code);
+        var activationCode = _context.ActivationCodes.FindOne(c => c.Code == request.Code);
 
         if (activationCode == null)
         {
@@ -50,7 +48,7 @@ public class ActivationController : ControllerBase
         // 检查验证次数是否超过限制
         if (activationCode.ValidationCount > 3)
         {
-            await _context.SaveChangesAsync();
+            _context.ActivationCodes.Update(activationCode);
             
             _logger.LogWarning($"Activation code validation limit exceeded: {request.Code}, count: {activationCode.ValidationCount}");
             return BadRequest(new ValidateCodeResponse
@@ -66,7 +64,7 @@ public class ActivationController : ControllerBase
         {
             if (activationCode.ExpiresAt.HasValue && activationCode.ExpiresAt.Value > DateTime.UtcNow)
             {
-                await _context.SaveChangesAsync();
+                _context.ActivationCodes.Update(activationCode);
                 
                 return Ok(new ValidateCodeResponse
                 {
@@ -79,7 +77,7 @@ public class ActivationController : ControllerBase
             }
             else
             {
-                await _context.SaveChangesAsync();
+                _context.ActivationCodes.Update(activationCode);
                 
                 return BadRequest(new ValidateCodeResponse
                 {
@@ -96,7 +94,7 @@ public class ActivationController : ControllerBase
         activationCode.ActivatedAt = DateTime.UtcNow;
         activationCode.ExpiresAt = DateTime.UtcNow.AddDays(7);
 
-        await _context.SaveChangesAsync();
+        _context.ActivationCodes.Update(activationCode);
 
         _logger.LogInformation($"Activation code activated: {request.Code}, expires at: {activationCode.ExpiresAt}, validation count: {activationCode.ValidationCount}");
 

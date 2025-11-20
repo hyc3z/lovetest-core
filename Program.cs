@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using ActivationCodeApi.Data;
 using ActivationCodeApi.Services;
 using ActivationCodeApi.Middleware;
@@ -22,9 +21,9 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Add SQLite database
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Add LiteDB database
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Filename=activationcodes.db;Connection=shared";
+builder.Services.AddSingleton(new LiteDbContext(connectionString));
 
 // Add custom services
 builder.Services.AddScoped<AdminSetupService>();
@@ -33,21 +32,24 @@ builder.Services.AddSingleton<TokenService>();
 // Add background service for cleanup
 builder.Services.AddHostedService<CodeCleanupService>();
 
+// Add rate limiting
+builder.Services.AddMemoryCache();
+builder.Services.Configure<IpRateLimitOptions>(builder.Configuration.GetSection("IpRateLimiting"));
+builder.Services.AddInMemoryRateLimiting();
+builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+
 var app = builder.Build();
 
 // Initialize database and admin account on startup
-using (var scope = app.Services.CreateScope())
 {
-    var services = scope.ServiceProvider;
-    var logger = services.GetRequiredService<ILogger<Program>>();
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
     
     try
     {
-        var dbContext = services.GetRequiredService<AppDbContext>();
+        var dbContext = app.Services.GetRequiredService<LiteDbContext>();
         
-        // Ensure database and tables are created
+        // Check if database is new
         var isNewDatabase = !File.Exists("activationcodes.db");
-        dbContext.Database.EnsureCreated();
         
         if (isNewDatabase)
         {
@@ -59,8 +61,11 @@ using (var scope = app.Services.CreateScope())
         }
         
         // Initialize admin account (one-time setup with default credentials)
-        var adminSetupService = services.GetRequiredService<AdminSetupService>();
-        await adminSetupService.InitializeAdminAccountAsync();
+        using (var scope = app.Services.CreateScope())
+        {
+            var adminSetupService = scope.ServiceProvider.GetRequiredService<AdminSetupService>();
+            await adminSetupService.InitializeAdminAccountAsync();
+        }
         
         // Seed initial activation codes if needed
         ActivationCodeApi.SeedData.Initialize(dbContext);
@@ -81,6 +86,8 @@ if (app.Environment.IsDevelopment())
 
 // Enable CORS
 app.UseCors("AllowAll");
+
+app.UseIpRateLimiting();
 
 // Add API key authentication middleware
 app.UseMiddleware<ApiKeyAuthenticationMiddleware>();

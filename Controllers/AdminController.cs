@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ActivationCodeApi.Data;
 using ActivationCodeApi.Models;
 using ActivationCodeApi.DTOs;
@@ -11,13 +10,13 @@ namespace ActivationCodeApi.Controllers;
 [Route("api/[controller]")]
 public class AdminController : ControllerBase
 {
-    private readonly AppDbContext _context;
+    private readonly LiteDbContext _context;
     private readonly ILogger<AdminController> _logger;
     private readonly AdminSetupService _adminSetupService;
     private readonly TokenService _tokenService;
 
     public AdminController(
-        AppDbContext context, 
+        LiteDbContext context, 
         ILogger<AdminController> logger,
         AdminSetupService adminSetupService,
         TokenService tokenService)
@@ -105,8 +104,7 @@ public class AdminController : ControllerBase
                 generatedCodes.Add(code);
             }
 
-            _context.ActivationCodes.AddRange(batchCodes);
-            await _context.SaveChangesAsync();
+            _context.ActivationCodes.InsertBulk(batchCodes);
             
             _logger.LogInformation($"Generated batch {batch + 1}/{totalBatches} ({currentBatchSize} codes)");
         }
@@ -124,7 +122,7 @@ public class AdminController : ControllerBase
     }
 
     [HttpGet("codes")]
-    public async Task<ActionResult<PagedCodesResponse>> GetAllCodes(
+    public Task<ActionResult<PagedCodesResponse>> GetAllCodes(
         [FromQuery] bool? isUsed = null,
         [FromQuery] int? skipToken = null,
         [FromQuery] int pageSize = 100)
@@ -132,10 +130,11 @@ public class AdminController : ControllerBase
         // Validate page size
         if (pageSize < 1 || pageSize > 1000)
         {
-            return BadRequest(new { message = "Page size must be between 1 and 1000" });
+            return Task.FromResult<ActionResult<PagedCodesResponse>>(BadRequest(new { message = "Page size must be between 1 and 1000" }));
         }
 
-        var query = _context.ActivationCodes.AsQueryable();
+        // Build query
+        var query = _context.ActivationCodes.Query();
 
         if (isUsed.HasValue)
         {
@@ -149,13 +148,13 @@ public class AdminController : ControllerBase
         }
 
         // Get total count for the filtered query
-        var totalCount = await query.CountAsync();
+        var totalCount = query.Count();
 
         // Get codes ordered by ID
-        var codes = await query
+        var codes = query
             .OrderBy(c => c.Id)
-            .Take(pageSize + 1) // Take one extra to check if there are more
-            .ToListAsync();
+            .Limit(pageSize + 1) // Take one extra to check if there are more
+            .ToList();
 
         var hasMore = codes.Count > pageSize;
         if (hasMore)
@@ -172,58 +171,59 @@ public class AdminController : ControllerBase
             HasMore = hasMore
         };
 
-        return Ok(response);
+        return Task.FromResult<ActionResult<PagedCodesResponse>>(Ok(response));
     }
 
     [HttpGet("stats")]
-    public async Task<ActionResult<CodeStatsResponse>> GetStats()
+    public Task<ActionResult<CodeStatsResponse>> GetStats()
     {
-        var totalCodes = await _context.ActivationCodes.CountAsync();
-        var unusedCodes = await _context.ActivationCodes.CountAsync(c => !c.IsUsed);
-        var usedCodes = await _context.ActivationCodes.CountAsync(c => c.IsUsed);
-        var activeCodes = await _context.ActivationCodes
-            .CountAsync(c => c.IsUsed && c.ExpiresAt.HasValue && c.ExpiresAt.Value > DateTime.UtcNow);
+        var totalCodes = _context.ActivationCodes.Count();
+        var unusedCodes = _context.ActivationCodes.Count(c => !c.IsUsed);
+        var usedCodes = _context.ActivationCodes.Count(c => c.IsUsed);
+        var now = DateTime.UtcNow;
+        var activeCodes = _context.ActivationCodes
+            .Count(c => c.IsUsed && c.ExpiresAt.HasValue && c.ExpiresAt.Value > now);
 
-        return Ok(new CodeStatsResponse
+        return Task.FromResult<ActionResult<CodeStatsResponse>>(Ok(new CodeStatsResponse
         {
             TotalCodes = totalCodes,
             UnusedCodes = unusedCodes,
             UsedCodes = usedCodes,
             ActiveCodes = activeCodes
-        });
+        }));
     }
 
     [HttpDelete("codes/{code}")]
-    public async Task<ActionResult> DeleteCode(string code)
+    public Task<ActionResult> DeleteCode(string code)
     {
-        var activationCode = await _context.ActivationCodes
-            .FirstOrDefaultAsync(c => c.Code == code);
+        var activationCode = _context.ActivationCodes.FindOne(c => c.Code == code);
 
         if (activationCode == null)
         {
-            return NotFound(new { message = "Code not found" });
+            return Task.FromResult<ActionResult>(NotFound(new { message = "Code not found" }));
         }
 
-        _context.ActivationCodes.Remove(activationCode);
-        await _context.SaveChangesAsync();
+        _context.ActivationCodes.Delete(activationCode.Id);
 
         _logger.LogInformation($"Deleted activation code: {code}");
-        return Ok(new { message = "Code deleted successfully" });
+        return Task.FromResult<ActionResult>(Ok(new { message = "Code deleted successfully" }));
     }
 
     [HttpDelete("codes/expired")]
-    public async Task<ActionResult> DeleteExpiredCodes()
+    public Task<ActionResult> DeleteExpiredCodes()
     {
         var now = DateTime.UtcNow;
-        var expiredCodes = await _context.ActivationCodes
-            .Where(c => c.IsUsed && c.ExpiresAt != null && c.ExpiresAt < now)
-            .ToListAsync();
+        var expiredCodes = _context.ActivationCodes
+            .Find(c => c.IsUsed && c.ExpiresAt != null && c.ExpiresAt < now)
+            .ToList();
 
-        _context.ActivationCodes.RemoveRange(expiredCodes);
-        await _context.SaveChangesAsync();
+        foreach (var code in expiredCodes)
+        {
+            _context.ActivationCodes.Delete(code.Id);
+        }
 
         _logger.LogInformation($"Deleted {expiredCodes.Count} expired codes");
-        return Ok(new { message = $"Deleted {expiredCodes.Count} expired codes" });
+        return Task.FromResult<ActionResult>(Ok(new { message = $"Deleted {expiredCodes.Count} expired codes" }));
     }
 
     [HttpPost("codes/batch-delete")]
@@ -244,7 +244,7 @@ public class AdminController : ControllerBase
             var regex = new System.Text.RegularExpressions.Regex(request.Pattern);
 
             // 获取所有激活码
-            var allCodes = await _context.ActivationCodes.ToListAsync();
+            var allCodes = _context.ActivationCodes.FindAll().ToList();
 
             // 使用正则表达式匹配
             var matchedCodes = allCodes
@@ -272,8 +272,10 @@ public class AdminController : ControllerBase
             // 实际删除
             if (matchedCodes.Any())
             {
-                _context.ActivationCodes.RemoveRange(matchedCodes);
-                await _context.SaveChangesAsync();
+                foreach (var code in matchedCodes)
+                {
+                    _context.ActivationCodes.Delete(code.Id);
+                }
                 
                 _logger.LogInformation($"Batch deleted {matchedCodes.Count} codes matching pattern '{request.Pattern}'");
             }
@@ -309,18 +311,26 @@ public class AdminController : ControllerBase
     }
 
     [HttpPost("init-database")]
-    public async Task<ActionResult> InitializeDatabase()
+    public Task<ActionResult> InitializeDatabase()
     {
         try
         {
-            await _context.Database.EnsureCreatedAsync();
-            _logger.LogInformation("Database initialized successfully");
-            return Ok(new { message = "Database initialized successfully" });
+            // LiteDB creates database automatically, just verify connection
+            var canConnect = _context.CanConnect();
+            if (canConnect)
+            {
+                _logger.LogInformation("Database initialized successfully");
+                return Task.FromResult<ActionResult>(Ok(new { message = "Database initialized successfully" }));
+            }
+            else
+            {
+                return Task.FromResult<ActionResult>(StatusCode(500, new { message = "Failed to connect to database" }));
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to initialize database");
-            return StatusCode(500, new { message = "Failed to initialize database", error = ex.Message });
+            return Task.FromResult<ActionResult>(StatusCode(500, new { message = "Failed to initialize database", error = ex.Message }));
         }
     }
 }

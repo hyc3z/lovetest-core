@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ActivationCodeApi.Data;
 
 namespace ActivationCodeApi.Controllers;
@@ -8,10 +7,10 @@ namespace ActivationCodeApi.Controllers;
 [Route("api/[controller]")]
 public class HealthController : ControllerBase
 {
-    private readonly AppDbContext _context;
+    private readonly LiteDbContext _context;
     private readonly ILogger<HealthController> _logger;
 
-    public HealthController(AppDbContext context, ILogger<HealthController> logger)
+    public HealthController(LiteDbContext context, ILogger<HealthController> logger)
     {
         _context = context;
         _logger = logger;
@@ -42,7 +41,7 @@ public class HealthController : ControllerBase
         try
         {
             // 检查数据库连接
-            var canConnect = await _context.Database.CanConnectAsync();
+            var canConnect = _context.CanConnect();
             
             if (!canConnect)
             {
@@ -56,7 +55,7 @@ public class HealthController : ControllerBase
             }
 
             // 可选：检查数据库是否有数据（确保初始化完成）
-            var adminExists = await _context.AdminUsers.AnyAsync();
+            var adminExists = _context.AdminUsers.Count() > 0;
             
             if (!adminExists)
             {

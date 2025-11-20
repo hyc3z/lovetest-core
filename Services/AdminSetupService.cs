@@ -1,6 +1,5 @@
 using ActivationCodeApi.Data;
 using ActivationCodeApi.Models;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -8,24 +7,24 @@ namespace ActivationCodeApi.Services;
 
 public class AdminSetupService
 {
-    private readonly AppDbContext _context;
+    private readonly LiteDbContext _context;
     private readonly ILogger<AdminSetupService> _logger;
 
-    public AdminSetupService(AppDbContext context, ILogger<AdminSetupService> logger)
+    public AdminSetupService(LiteDbContext context, ILogger<AdminSetupService> logger)
     {
         _context = context;
         _logger = logger;
     }
 
-    public async Task InitializeAdminAccountAsync()
+    public Task InitializeAdminAccountAsync()
     {
         // Check if admin account already exists
-        var adminExists = await _context.AdminUsers.AnyAsync();
+        var adminExists = _context.AdminUsers.Count() > 0;
         
         if (adminExists)
         {
             _logger.LogInformation("Admin account already exists. Skipping setup.");
-            return;
+            return Task.CompletedTask;
         }
 
         // Create default admin account with username: admin, password: admin
@@ -40,47 +39,45 @@ public class AdminSetupService
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.AdminUsers.Add(adminUser);
-        await _context.SaveChangesAsync();
+        _context.AdminUsers.Insert(adminUser);
 
         _logger.LogInformation("Admin account created with default credentials (username: admin, password: admin)");
+        return Task.CompletedTask;
     }
 
-    public async Task<bool> ChangePasswordAsync(string username, string oldPassword, string newPassword)
+    public Task<bool> ChangePasswordAsync(string username, string oldPassword, string newPassword)
     {
-        var admin = await _context.AdminUsers
-            .FirstOrDefaultAsync(a => a.Username == username);
+        var admin = _context.AdminUsers.FindOne(a => a.Username == username);
 
         if (admin == null)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
         var oldPasswordHash = HashPassword(oldPassword);
         if (admin.PasswordHash != oldPasswordHash)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
         admin.PasswordHash = HashPassword(newPassword);
-        await _context.SaveChangesAsync();
+        _context.AdminUsers.Update(admin);
 
         _logger.LogInformation($"Password changed for user: {username}");
-        return true;
+        return Task.FromResult(true);
     }
 
-    public async Task<bool> ValidateCredentialsAsync(string username, string password)
+    public Task<bool> ValidateCredentialsAsync(string username, string password)
     {
-        var admin = await _context.AdminUsers
-            .FirstOrDefaultAsync(a => a.Username == username);
+        var admin = _context.AdminUsers.FindOne(a => a.Username == username);
 
         if (admin == null)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
         var passwordHash = HashPassword(password);
-        return admin.PasswordHash == passwordHash;
+        return Task.FromResult(admin.PasswordHash == passwordHash);
     }
 
     public string HashPassword(string password)
