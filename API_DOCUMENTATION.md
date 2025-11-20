@@ -6,6 +6,7 @@
 
 - [基本信息](#基本信息)
 - [认证](#认证)
+- [健康检查端点](#健康检查端点)
 - [公共端点](#公共端点)
 - [管理员端点](#管理员端点)
 - [错误代码](#错误代码)
@@ -40,6 +41,79 @@ Authorization: Bearer <your-jwt-token>
 ```
 
 令牌有效期：**30分钟**
+
+---
+
+## 健康检查端点
+
+这些端点用于Kubernetes健康检查和监控，不需要认证。
+
+### GET /api/health/live
+
+**用途:** Liveness probe - 检查应用是否存活
+
+**响应:** `200 OK`
+```json
+{
+  "status": "alive",
+  "timestamp": "2025-11-18T10:30:00Z"
+}
+```
+
+### GET /api/health/ready
+
+**用途:** Readiness probe - 检查应用是否准备好接收流量
+
+**响应:** `200 OK` (就绪) 或 `503 Service Unavailable` (未就绪)
+```json
+{
+  "status": "ready",
+  "database": "connected",
+  "timestamp": "2025-11-18T10:30:00Z"
+}
+```
+
+### GET /api/health/startup
+
+**用途:** Startup probe - 检查应用是否已启动完成
+
+**响应:** `200 OK` (已启动) 或 `503 Service Unavailable` (启动中)
+```json
+{
+  "status": "started",
+  "database": "initialized",
+  "timestamp": "2025-11-18T10:30:00Z"
+}
+```
+
+### GET /api/health
+
+**用途:** 综合健康检查 - 返回详细的健康状态
+
+**响应:** `200 OK`
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-11-18T10:30:00Z",
+  "checks": {
+    "database": {
+      "status": "healthy",
+      "message": "Connected"
+    },
+    "database_data": {
+      "status": "healthy",
+      "adminUsers": 1,
+      "activationCodes": 5000
+    },
+    "version": {
+      "status": "healthy",
+      "version": "1.0.0"
+    }
+  }
+}
+```
+
+详细信息请参考 [健康检查文档](HEALTH_CHECKS.md)。
 
 ---
 
