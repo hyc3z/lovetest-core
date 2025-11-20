@@ -111,7 +111,7 @@ public class HealthController : ControllerBase
             }
 
             // 检查关键表是否存在
-            var adminExists = await _context.AdminUsers.AnyAsync();
+            var adminExists = _context.AdminUsers.Count() > 0;
             
             return Ok(new
             {
