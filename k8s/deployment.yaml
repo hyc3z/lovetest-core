@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: api
-        image: omaticaya/lovetest-core:1.0.4
+        image: omaticaya/lovetest-core:1.0.5
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
