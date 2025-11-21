@@ -90,23 +90,34 @@ jobs:
       - name: Image digest
         run: echo ${{ steps.meta.outputs.digest }}
 
-      - name: Update Kubernetes deployment with new version
+      - name: Update Kubernetes manifests with new version
         run: |
-          # Update the image tag in kustomization.yaml
-          sed -i "s|newTag:.*|newTag: ${{ steps.version.outputs.version }}|g" k8s/kustomization.yaml
+          FULL_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKER_IMAGE_NAME }}"
+          NEW_VERSION="${{ steps.version.outputs.version }}"
           
-          # Verify the change
+          # Update kustomization.yaml with new image name and tag
+          sed -i "s|newName:.*|newName: ${FULL_IMAGE}|g" k8s/kustomization.yaml
+          sed -i "s|newTag:.*|newTag: ${NEW_VERSION}|g" k8s/kustomization.yaml
+          
+          # Also update deployment.yaml directly (backup, kustomization should handle this)
+          sed -i "s|image: .*lovetest.*:.*|image: ${FULL_IMAGE}:${NEW_VERSION}|g" k8s/deployment.yaml
+          
+          # Verify the changes
           echo "Updated kustomization.yaml:"
           cat k8s/kustomization.yaml
+          echo ""
+          echo "Updated deployment.yaml image line:"
+          grep "image:" k8s/deployment.yaml
 
       - name: Commit and push version update
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add both VERSION file and kustomization.yaml
+          # Add VERSION file and K8s manifests
           git add VERSION
           git add k8s/kustomization.yaml
+          git add k8s/deployment.yaml
           
           # Only commit if there are changes
           if git diff --staged --quiet; then

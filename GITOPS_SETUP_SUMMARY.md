@@ -19,8 +19,10 @@ When you push to `main`, the workflow automatically:
 1. ✅ **Auto-bumps version** from `ActivationCodeApi/VERSION` (e.g., 1.2.3 → 1.2.4)
 2. ✅ **Builds Docker image** with the new version tag
 3. ✅ **Pushes to Docker Hub**: `yourusername/lovetest-api:1.2.4`
-4. ✅ **Updates K8s manifests**: `ActivationCodeApi/k8s/kustomization.yaml` with new version
-5. ✅ **Commits both files** back to your repository
+4. ✅ **Updates K8s manifests**: 
+   - `ActivationCodeApi/k8s/kustomization.yaml` (image name and tag)
+   - `ActivationCodeApi/k8s/deployment.yaml` (image reference)
+5. ✅ **Commits all files** back to your repository
 6. ✅ **Uses `[skip ci]`** in commit message to prevent infinite loops
 
 ### 3. Automatic Deployment
@@ -84,7 +86,7 @@ git push origin main
 # 2. GitHub Actions automatically:
 #    - Bumps version: 1.2.3 → 1.2.4
 #    - Builds: yourusername/lovetest-api:1.2.4
-#    - Updates: VERSION and k8s/kustomization.yaml
+#    - Updates: VERSION, k8s/kustomization.yaml, and k8s/deployment.yaml
 #    - Commits: "chore: bump version to 1.2.4 and update K8s manifests [skip ci]"
 
 # 3. ArgoCD/Flux automatically deploys (if configured)
@@ -124,15 +126,19 @@ git log --oneline -5
 # def5678 feat: add new endpoint
 ```
 
-### Check Kubernetes Manifest
+### Check Kubernetes Manifests
 ```bash
+# Check kustomization.yaml
 cat ActivationCodeApi/k8s/kustomization.yaml
-
 # Should show:
 # images:
-# - name: activationcode-api
+# - name: omaticaya/lovetest-core
 #   newName: yourusername/lovetest-api
 #   newTag: 1.2.4
+
+# Check deployment.yaml
+grep "image:" ActivationCodeApi/k8s/deployment.yaml
+# Should show: image: yourusername/lovetest-api:1.2.4
 ```
 
 ### Check VERSION File

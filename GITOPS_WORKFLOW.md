@@ -46,13 +46,17 @@ When you push to `main`, the GitHub Actions workflow automatically:
 
 4. **Updates Kubernetes Manifests**
    ```bash
-   # Updates k8s/kustomization.yaml
-   sed -i "s|newTag:.*|newTag: 1.2.3|g" k8s/kustomization.yaml
+   # Updates k8s/kustomization.yaml (image name and tag)
+   sed -i "s|newName:.*|newName: yourusername/lovetest-api|g" k8s/kustomization.yaml
+   sed -i "s|newTag:.*|newTag: 1.2.4|g" k8s/kustomization.yaml
+   
+   # Updates k8s/deployment.yaml (direct image reference)
+   sed -i "s|image: .*|image: yourusername/lovetest-api:1.2.4|g" k8s/deployment.yaml
    ```
 
 5. **Commits Back to Repository**
    ```bash
-   # Commits both VERSION file and kustomization.yaml
+   # Commits VERSION file and both K8s manifests
    git commit -m "chore: bump version to 1.2.4 and update K8s manifests [skip ci]"
    git push
    ```
